@@ -220,8 +220,8 @@ def train_model(model, last_eachbatch, args):
         # Freeze or unfreeze decoders based on the current batch number
         freeze_decoder_weights(model, eachbatch)
 
-        # Check model conditions
-        check_requires_grad(model)
+        # Optionally, you can check which parameters are frozen/unfrozen
+        #check_requires_grad(model)
 
         if args.embedding == False:
             # BPSK modulated representations 
@@ -289,18 +289,27 @@ def train_model(model, last_eachbatch, args):
         # Compute loss based on the active decoder
         x = ((eachbatch - 1) / 100) % 3
         if x == 0:
-             loss = F.nll_loss(preds1, ys.to(args.device))
+            loss = F.nll_loss(preds1, ys.to(args.device))
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
+            args.optimizer.step()
         elif x == 1:
             loss = F.nll_loss(preds2, ys.to(args.device))
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
+            args.optimizer.step()
         elif x == 2:
             loss = F.nll_loss(preds3, ys.to(args.device))
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
+            args.optimizer.step()
 
         ########################## This should be binary cross-entropy loss
-        loss.backward()
+        #loss.backward()
         ####################### Gradient Clipping optional ###########################
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
-        ##############################################################################
-        args.optimizer.step()
+        #torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
+        ###############################################################################
+        #args.optimizer.step()
 
         # Save the model
         w1 = model.state_dict()
