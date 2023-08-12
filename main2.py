@@ -29,7 +29,7 @@ import numpy as np
 def ModelAvg(w):
     w_avg = copy.deepcopy(w[0])
     for k in w_avg.keys():
-        if w_avg[k].requires_grad:
+        if w_avg[k].requires_grad: #change1
             for i in range(1, len(w)):
                 w_avg[k] += w[i][k]
             w_avg[k] = torch.div(w_avg[k], len(w))
@@ -217,10 +217,8 @@ def train_model(model, last_eachbatch, args):
     #########################################################################################
     for eachbatch in range(last_eachbatch + 1, args.totalbatch):
         
-        # Freeze or unfreeze decoders based on the current batch number
-        freeze_decoder_weights(model, eachbatch)
-
-        # Optionally, you can check which parameters are frozen/unfrozen
+        #change2 Freeze or unfreeze decoders based on the current batch number
+        freeze_decoder_weights(model, eachbatch)    
         #check_requires_grad(model)
 
         if args.embedding == False:
@@ -286,7 +284,7 @@ def train_model(model, last_eachbatch, args):
         preds3 = preds3.contiguous().view(-1, preds3.size(-1))  # => (Batch*K) x 2^m
         preds3 = torch.log(preds3)
 
-        # Compute loss based on the active decoder
+        # change 3 Compute loss based on the active decoder
         x = ((eachbatch - 1) / 100) % 3
         if x == 0:
             loss = F.nll_loss(preds1, ys.to(args.device))
