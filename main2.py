@@ -220,7 +220,7 @@ def train_model(model, last_eachbatch, args):
         # Freeze or unfreeze decoders based on the current batch number
         freeze_decoder_weights(model, eachbatch)
 
-        # Optionally, you can check which parameters are frozen/unfrozen
+        # Check model conditions
         check_requires_grad(model)
 
         if args.embedding == False:
