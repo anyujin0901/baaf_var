@@ -285,18 +285,17 @@ def train_model(model, last_eachbatch, args):
         preds3 = torch.log(preds3)
 
         # change 3 Compute loss based on the active decoder
-        x = ((eachbatch - 1) / 100) % 3
-        if x == 0:
+        if eachbatch <= 40000:
             loss = F.nll_loss(preds1, ys.to(args.device))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
             args.optimizer.step()
-        elif x == 1:
+        elif 40000 < eachbatch <= 80000:
             loss = F.nll_loss(preds2, ys.to(args.device))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
             args.optimizer.step()
-        elif x == 2:
+        else:
             loss = F.nll_loss(preds3, ys.to(args.device))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
