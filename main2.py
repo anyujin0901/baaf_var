@@ -3,7 +3,7 @@ import numpy as np
 import torch.nn as nn
 from torch import optim
 
-from freezer import freeze_decoder_weights, check_requires_grad
+from freezer_mod import freeze_decoder_weights, check_requires_grad
 from utils import *
 from nn_layers import *
 from parameters import *
@@ -262,40 +262,74 @@ def train_model(model, last_eachbatch, args):
             # Use the common model to have a large batch strategy
             model.load_state_dict(w0)
 
-        # feed into model to get predictions
-        preds1, preds2, preds3,_ = model(eachbatch, bVec_md.to(args.device), fwd_noise_par.to(args.device),
-                                                fb_noise_par.to(args.device), A_blocks.to(args.device), isTraining=1)
-
-        args.optimizer.zero_grad()
-        if args.multclass:
-            if args.embedding == False:
-                bVec_mc = torch.matmul(bVec, map_vec)
-                ys = bVec_mc.long().contiguous().view(-1)
-            else:
-                ys = bVec.contiguous().view(-1)
-        else:
-            # expand the labels (bVec) in a batch to a vector, each word in preds should be a 0-1 distribution
-            ys = bVec.long().contiguous().view(-1)
-        ################## for all predictions ################
-        preds1 = preds1.contiguous().view(-1, preds1.size(-1))  # => (Batch*K) x 2^m
-        preds1 = torch.log(preds1)
-        preds2 = preds2.contiguous().view(-1, preds2.size(-1))  # => (Batch*K) x 2^m
-        preds2 = torch.log(preds2)
-        preds3 = preds3.contiguous().view(-1, preds3.size(-1))  # => (Batch*K) x 2^m
-        preds3 = torch.log(preds3)
-
         # change 3 Compute loss based on the active decoder
         if eachbatch <= 40000:
+            preds1, _, _, _ = model(eachbatch, bVec_md.to(args.device), fwd_noise_par.to(args.device),
+                                                fb_noise_par.to(args.device), A_blocks.to(args.device), isTraining=1)
+
+            args.optimizer.zero_grad()
+            if args.multclass:
+                if args.embedding == False:
+                    bVec_mc = torch.matmul(bVec, map_vec)
+                    ys = bVec_mc.long().contiguous().view(-1)
+                else:
+                    ys = bVec.contiguous().view(-1)
+            else:
+                # expand the labels (bVec) in a batch to a vector, each word in preds should be a 0-1 distribution
+                ys = bVec.long().contiguous().view(-1)
+            ################## for all predictions ################
+            preds1 = preds1.contiguous().view(-1, preds1.size(-1))  # => (Batch*K) x 2^m
+            preds1 = torch.log(preds1)
             loss = F.nll_loss(preds1, ys.to(args.device))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
             args.optimizer.step()
         elif 40000 < eachbatch <= 80000:
+            _, preds2, _, _ = model(eachbatch, bVec_md.to(args.device), fwd_noise_par.to(args.device),
+                                                fb_noise_par.to(args.device), A_blocks.to(args.device), isTraining=1)
+
+            args.optimizer.zero_grad()
+            if args.multclass:
+                if args.embedding == False:
+                    bVec_mc = torch.matmul(bVec, map_vec)
+                    ys = bVec_mc.long().contiguous().view(-1)
+                else:
+                    ys = bVec.contiguous().view(-1)
+            else:
+                # expand the labels (bVec) in a batch to a vector, each word in preds should be a 0-1 distribution
+                ys = bVec.long().contiguous().view(-1)
+            ################## for all predictions ################
+            preds2 = preds2.contiguous().view(-1, preds2.size(-1))  # => (Batch*K) x 2^m
+            preds2 = torch.log(preds2)
+            loss = F.nll_loss(preds2, ys.to(args.device))
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
+            args.optimizer.step()
             loss = F.nll_loss(preds2, ys.to(args.device))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
             args.optimizer.step()
         else:
+            _, _, preds3, _ = model(eachbatch, bVec_md.to(args.device), fwd_noise_par.to(args.device),
+                                                fb_noise_par.to(args.device), A_blocks.to(args.device), isTraining=1)
+
+            args.optimizer.zero_grad()
+            if args.multclass:
+                if args.embedding == False:
+                    bVec_mc = torch.matmul(bVec, map_vec)
+                    ys = bVec_mc.long().contiguous().view(-1)
+                else:
+                    ys = bVec.contiguous().view(-1)
+            else:
+                # expand the labels (bVec) in a batch to a vector, each word in preds should be a 0-1 distribution
+                ys = bVec.long().contiguous().view(-1)
+            ################## for all predictions ################
+            preds3 = preds3.contiguous().view(-1, preds3.size(-1))  # => (Batch*K) x 2^m
+            preds3 = torch.log(preds3)
+            loss = F.nll_loss(preds3, ys.to(args.device))
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
+            args.optimizer.step()
             loss = F.nll_loss(preds3, ys.to(args.device))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_th)
