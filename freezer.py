@@ -13,7 +13,7 @@ def freeze_decoder_weights(model, eachbatch):
     # Train Rmodel2 for the next 40k batches
     elif 40000 < eachbatch <= 80000:
         for param in model.Tmodel.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
         for param in model.Rmodel1.parameters():
             param.requires_grad = False
         for param in model.Rmodel2.parameters():
@@ -24,7 +24,7 @@ def freeze_decoder_weights(model, eachbatch):
     # Train Rmodel3 for batches beyond 40k
     else:
         for param in model.Tmodel.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
         for param in model.Rmodel1.parameters():
             param.requires_grad = False
         for param in model.Rmodel2.parameters():
