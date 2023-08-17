@@ -55,12 +55,10 @@ class AE(nn.Module):
         ############### ACTIVE FEEDBACK ################
         self.Tmodelfb = BERT("trx", 2 * (args.T - 1) - 1, args.m, args.d_model_trx, args.N_trx, args.heads_trx,
                              args.dropout, args.custom_attn, args.multclass, args.NS_model)
-        #self.Rmodel1 = BERT("rec", args.T - 2, args.m, args.d_model_trx, args.N_trx + 1, args.heads_trx, args.dropout,
-        #                    args.custom_attn, args.multclass, args.NS_model)
-        #self.Rmodel2 = BERT("rec", args.T - 1, args.m, args.d_model_trx, args.N_trx + 1, args.heads_trx, args.dropout,
-        #                    args.custom_attn, args.multclass, args.NS_model)
-        self.Rmodel3 = BERT("rec", args.T, args.m, args.d_model_trx, args.N_trx + 1, args.heads_trx, args.dropout,
+
+        self.Rmodel = BERT("rec", (3*args.T) - 3 , args.m, args.d_model_trx, args.N_trx + 1, args.heads_trx, args.dropout,
                             args.custom_attn, args.multclass, args.NS_model)
+
         ########## Power Reallocation as in deepcode work ###############
         if self.args.reloc == 1:
             self.total_power_reloc = Power_reallocate(args)
@@ -106,13 +104,6 @@ class AE(nn.Module):
         return outputs
     
 
-    ######padding######
-    def pad_to_max_length(self, tensor, max_length):
-        padding_size = max_length - tensor.size(2)
-        zeros = torch.zeros(tensor.size(0), tensor.size(1), padding_size).to(self.args.device)
-        return torch.cat([tensor, zeros], 2)
-    ##############
-
     ########### IMPORTANT ##################
     # We use unmodulated bits at encoder
     #######################################
@@ -151,16 +142,10 @@ class AE(nn.Module):
                 parity_all = torch.cat([parity_all, parity], dim=2)
                 parity_all_n = torch.cat([parity_all_n, parity + fwd_noise_par[:, :, idx].unsqueeze(-1)], dim=2)
                 if idx < self.args.T - 2:
-                    received1 = torch.cat([received1, parity + fwd_noise_par[:, :, idx].unsqueeze(-1)], dim=2)
+                   received1 = torch.cat([received1, parity + fwd_noise_par[:, :, idx].unsqueeze(-1)], dim=2)
                 if idx < self.args.T - 1:
                     received2 = torch.cat([received2, parity + fwd_noise_par[:, :, idx].unsqueeze(-1)], dim=2)
                 received3 = torch.cat([received3, parity + fwd_noise_par[:, :, idx].unsqueeze(-1)], dim=2)
-
-            max_length = max(received1.size(2), received2.size(2), received3.size(2))
-            #Pad the received sequences to the maximum length
-            received1 = self.pad_to_max_length(received1, max_length)
-            received2 = self.pad_to_max_length(received2, max_length)
-            received3 = self.pad_to_max_length(received3, max_length)
 
             ## Generating the coded feedback symbols
             if idx == 0:
@@ -196,17 +181,12 @@ class AE(nn.Module):
                 parity_all_fb_n = torch.cat([parity_all_fb_n, parity_fb + fb_noise_par[:, :, idx].unsqueeze(-1)], dim=2)
         # ------------------------------------------------------------ receiver
         # print(received.shape)
-        decSeq1 = self.Rmodel3(received1, None, self.pe, temperature=args.temperature)  # Decode the sequence
-        decSeq2 = self.Rmodel3(received2, None, self.pe, temperature=args.temperature)  # Decode the sequence
-        decSeq3 = self.Rmodel3(received3, None, self.pe, temperature=args.temperature)  # Decode the sequence
+        combined_received = torch.cat([received1, received2, received3], dim=2)
+        #print("rshape:", combined_received.shape)
+        decSeq = self.Rmodel(combined_received, None, self.pe, temperature=args.temperature)  # Decode the sequence
 
-        ######de-padding#######
-        decSeq1 = decSeq1[:, :, :received1.size(2)]
-        decSeq2 = decSeq2[:, :, :received2.size(2)]
-        decSeq3 = decSeq3[:, :, :received3.size(2)]
-        return decSeq1, decSeq2, decSeq3, outputs
+        return decSeq, outputs
 
-    
 
 ############################################################################################################################################################################
 
@@ -276,7 +256,7 @@ def train_model(model, last_eachbatch, args):
             model.load_state_dict(w0)
 
         # feed into model to get predictions
-        preds1, preds2, preds3,_ = model(eachbatch, bVec_md.to(args.device), fwd_noise_par.to(args.device),
+        preds,_ = model(eachbatch, bVec_md.to(args.device), fwd_noise_par.to(args.device),
                                                 fb_noise_par.to(args.device), A_blocks.to(args.device), isTraining=1)
 
         args.optimizer.zero_grad()
@@ -290,15 +270,10 @@ def train_model(model, last_eachbatch, args):
             # expand the labels (bVec) in a batch to a vector, each word in preds should be a 0-1 distribution
             ys = bVec.long().contiguous().view(-1)
         ################## for all predictions ################
-        preds1 = preds1.contiguous().view(-1, preds1.size(-1))  # => (Batch*K) x 2^m
-        preds1 = torch.log(preds1)
-        preds2 = preds2.contiguous().view(-1, preds2.size(-1))  # => (Batch*K) x 2^m
-        preds2 = torch.log(preds2)
-        preds3 = preds3.contiguous().view(-1, preds3.size(-1))  # => (Batch*K) x 2^m
-        preds3 = torch.log(preds3)
-        loss = (F.nll_loss(preds1, ys.to(args.device)) +
-                F.nll_loss(preds2, ys.to(args.device)) +
-                F.nll_loss(preds3, ys.to(args.device))) / 3
+        preds = preds.contiguous().view(-1, preds.size(-1))  # => (Batch*K) x 2^m
+        preds = torch.log(preds)
+
+        loss = F.nll_loss(preds, ys.to(args.device))
         ########################## This should be binary cross-entropy loss
         loss.backward()
         ####################### Gradient Clipping optional ###########################
@@ -322,7 +297,7 @@ def train_model(model, last_eachbatch, args):
                 args.scheduler.step()
         ################################ Observe test accuracy ##############################
         with torch.no_grad():
-            probs, decodeds = preds3.max(dim=1)  ########## use the higher rate ###############
+            probs, decodeds = preds.max(dim=1)  ########## use the higher rate ###############
             succRate = sum(decodeds == ys.to(args.device)) / len(ys)
             print('BAAF_VARv1', 'Idx,lr,snr1,snr2,BS,loss,BER,num=', (
                 eachbatch, args.lr, args.snr1, args.snr2, args.batchSize, round(loss.item(), 4),
@@ -390,7 +365,7 @@ def EvaluateNets(model, args):
 
         # feed into model to get predictions
         with torch.no_grad():
-            preds1, preds2, preds3, parity_symbols = model(eachbatch, bVec_md.to(args.device), fwd_noise_par.to(args.device),
+            preds, parity_symbols = model(eachbatch, bVec_md.to(args.device), fwd_noise_par.to(args.device),
                         fb_noise_par.to(args.device), A_blocks.to(args.device), isTraining=0)
 
             if args.multclass:
@@ -402,62 +377,43 @@ def EvaluateNets(model, args):
             else:
                 ys = bVec.long().contiguous().view(-1)
             ############# Decode all ##############################
-            preds1 = preds1.contiguous().view(-1, preds1.size(-1))
-            probs1, decodeds1 = preds1.max(dim=1)
+            preds = preds.contiguous().view(-1, preds.size(-1))
+            probs, decodeds = preds.max(dim=1)
             # print(decodeds1)
-            preds2 = preds2.contiguous().view(-1, preds2.size(-1))
-            probs2, decodeds2 = preds2.max(dim=1)
-            preds3 = preds3.contiguous().view(-1, preds3.size(-1))
-            probs3, decodeds3 = preds3.max(dim=1)
             #########################################################
-            probs1 = probs1.contiguous().view(args.batchSize, args.ell)
-            probs2 = probs2.contiguous().view(args.batchSize, args.ell)
-            probs3 = probs3.contiguous().view(args.batchSize, args.ell)
+            probs = probs.contiguous().view(args.batchSize, args.ell)
             ############## check trust on block #####################
-            flag1 = torch.sum((probs1 < args.conf_th), dim=1)
-            flag2 = torch.sum((probs2 < args.conf_th), dim=1)
-            flag3 = torch.sum((probs3 < args.conf_th), dim=1)
+            flag = torch.sum((probs < args.conf_th), dim=1)
             ############## trusted blocks ###########################
-            mask1 = (flag1 < 1).long()
-            mask1 = mask1.unsqueeze(dim=1)
-            mask1 = mask1.repeat(1, args.ell).view(-1)
-            mask2 = (flag2 < 1).long()
-            mask2 = mask2.unsqueeze(dim=1)
-            mask2 = mask2.repeat(1, args.ell).view(-1)
-            mask3 = (flag3 < 1).long()
-            mask3 = mask3.unsqueeze(dim=1)
-            mask3 = mask3.repeat(1, args.ell).view(-1)
+            mask = (flag < 1).long()
+            mask = mask.unsqueeze(dim=1)##
+            mask = mask.repeat(1, args.ell).view(-1) ##
             ############# Sent Symbols ############################
             num_iterations = torch.ones(args.batchSize) * args.T
             sent = parity_symbols
-            sent[flag1 == 0, :, (args.T - 2):] = 0
-            num_iterations[flag1 == 0] = args.T-2
-            sent[((flag1 > 0) * flag2) == 0, :, args.T - 1] = 0
-            num_iterations[((flag1 > 0) * flag2) == 0] = args.T-1
+            sent[flag == 0, :, (args.T - 2):] = 0
+            num_iterations[flag == 0] = args.T-2
+            sent[(flag > 0) == 0, :, args.T - 1] = 0
+            num_iterations[(flag > 0)  == 0] = args.T-1
             power = torch.sum(torch.pow(sent, 2), dim=[1, 2])
             avg_power_each_comm_block = power / num_iterations / args.ell
             avg_power_batch = torch.sum(torch.sum(avg_power_each_comm_block)) / args.batchSize
             avg_power = (avg_power * eachbatch + avg_power_batch) / (eachbatch + 1)
 
             ############# Decisions ###############################
-            decisions1 = (decodeds1 != ys.to(args.device)) * mask1
-            decisions2 = (decodeds2 != ys.to(args.device)) * mask2 * (1 - mask1)
-            decisions3 = (decodeds3 != ys.to(args.device)) * ((1 - mask2) * (1 - mask1))
-            allsum = sum(mask1) + sum(mask2 * (1 - mask1)) + sum((1 - mask2) * (1 - mask1))
+            decisions = (decodeds != ys.to(args.device)) * mask
+            allsum = sum(mask)
             print(allsum.item())
             # print(torch.sum(mask1))
             # print(torch.sum(mask2 * (1-mask1)))
             # print(torch.sum((1-mask2) * (1- mask1)))
-            adap += (torch.sum(mask2 * (1 - mask1)) + torch.sum((1 - mask2) * (1 - mask1)))
+            adap += torch.sum(mask)
             print(adap.item())
-            packet += (torch.sum(mask1) * (args.T - 2) + torch.sum(mask2 * (1 - mask1)) * (args.T - 1) + torch.sum(
-                (1 - mask2) * (1 - mask1)) * args.T) / (args.batchSize * args.ell)
+            packet += (torch.sum(mask1) * (args.T - 2) + torch.sum(~mask) * (args.T - 1) / (args.batchSize * args.ell))
             packets = packet / (eachbatch + 1)
             # bitErrors += decisions.sum()
             # BER = bitErrors / (eachbatch + 1) / args.batchSize / args.ell
-            pktErrors += (decisions1.view(args.batchSize, args.ell).sum(1).count_nonzero() + decisions2.view(
-                args.batchSize, args.ell).sum(1).count_nonzero() + decisions3.view(args.batchSize, args.ell).sum(
-                1).count_nonzero())
+            pktErrors += decisions.view(args.batchSize, args.ell).sum(1).count_nonzero()
             PER = pktErrors / (eachbatch + 1) / args.batchSize
             print('BAAF_VARv1', 'num, PER, errors, packet, avg_power = ', eachbatch,
                   round(PER.item(), 11), pktErrors.item(), packets.item(), avg_power.item())
